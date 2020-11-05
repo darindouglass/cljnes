@@ -1,0 +1,1 @@
+{:lint-as {snes.cpu/defmode clojure.core/defn}}

@@ -1,7 +1,8 @@
 (ns snes.cpu.opcode
   (:require [snes.binary :as b]
             [snes.cpu.address-mode :as address-mode]
-            [snes.cpu.impl :as cpu])
+            [snes.cpu.impl :as cpu]
+            [snes.opcode.utils :as utils])
   #?(:cljs (:require-macros [snes.cpu.opcode :refer [defopcode]])))
 
 ;; For debugging, going from an opcode to a name is super handy.
@@ -102,16 +103,7 @@
 (defopcode bpl
   0x10 address-mode/relative :cycles 2
   [nes relative-address]
-  (if-not (cpu/get-flag nes :negative)
-    (let [program-counter (get-in nes [:cpu :program-counter])
-          address (+ program-counter relative-address)
-          new-page? (!= (b/and address 0xFF00)
-                        (b/and program-counter 0xFF00))]
-      (-> nes
-          (update :cycles inc)
-          (assoc :program-counter address)
-          (cond-> new-page? (update :cycles inc))))
-    nes))
+  (utils/branch nes relative-address :negative :invert? true))
 
 (defopcode clc
   0x18 address-mode/implied :cycles 2
@@ -188,17 +180,8 @@
 
 (defopcode bmi
   0x30 address-mode/relative :cycles 2
-  [nes address]
-  (if (cpu/get-flag nes :negative)
-    (let [program-counter (get-in nes [:cpu :program-counter])
-          address (+ program-counter relative-address)
-          new-page? (!= (b/and address 0xFF00)
-                        (b/and program-counter 0xFF00))]
-      (-> nes
-          (update :cycles inc)
-          (assoc-in [:cpu :program-counter] address)
-          (cond-> new-page? (update-in [:cpu :cycles] inc))))
-    nes))
+  [nes relative-address]
+  (utils/branch nes relative-address :negative))
 
 (defopcode sec
   0x38 address-mode/implied :cycles 2
@@ -278,16 +261,7 @@
 (defopcode bvc
   0x50 address-mode/relative :cycles 2
   [nes relative-address]
-  (if-not (cpu/get-flag nes :overflow)
-    (let [program-counter (get-in nes [:cpu :program-counter])
-          address (+ program-counter relative-address)
-          new-page? (!= (b/and address 0xFF00)
-                        (b/and program-counter 0xFF00))]
-      (-> nes
-          (update-in [:cpu :cycles] inc)
-          (assoc-in [:cpu :program-counter] address)
-          (cond-> new-page? (update-in [:cpu :cycles] inc))))
-    nes))
+  (utils/branch nes relative-address :overflow :invert? true))
 
 (defopcode cli
   0x58 address-mode/implied :cycles 2
@@ -367,16 +341,7 @@
 (defopcode bvs
   0x70 address-mode/relative :cycles 2
   [nes relative-address]
-  (if-not (cpu/get-flag nes :overflow)
-    (let [program-counter (get-in nes [:cpu :program-counter])
-          address (+ program-counter relative-address)
-          new-page? (!= (b/and address 0xFF00)
-                        (b/and program-counter 0xFF00))]
-      (-> nes
-          (update-in [:cpu :cycles] inc)
-          (assoc-in [:cpu :program-counter] address)
-          (cond-> new-page? (update-in [:cpu :cycles] inc))))
-    nes))
+  (utils/branch nes relative-address :overflow))
 
 (defopcode sei
   0x78 address-mode/implied :cycles 2
@@ -429,16 +394,7 @@
 (defopcode bcc
   0x90 address-mode/relative :cycles 2
   [nes relative-address]
-  (if-not (cpu/get-flag nes :carry)
-    (let [program-counter (get-in nes [:cpu :program-counter])
-          address (+ program-counter relative-address)
-          new-page? (!= (b/and address 0xFF00)
-                        (b/and program-counter 0xFF00))]
-      (-> nes
-          (update :cycles inc)
-          (assoc :program-counter address)
-          (cond-> new-page? (update :cycles inc))))
-    nes))
+  (utils/branch nes relative-address :carry :invert? true))
 
 (defopcode tya
   0x98 address-mode/implied :cycles 2
@@ -521,16 +477,7 @@
 (defopcode bcs
   0xB0 address-mode/relative :cycles 2
   [nes relative-address]
-  (if (cpu/get-flag nes :carry)
-    (let [program-counter (get-in nes [:cpu :program-counter])
-          address (+ program-counter relative-address)
-          new-page? (!= (b/and address 0xFF00)
-                        (b/and program-counter 0xFF00))]
-      (-> nes
-          (update :cycles inc)
-          (assoc :program-counter address)
-          (cond-> new-page? (update :cycles inc))))
-    nes))
+  (utils/opcode nes relative-address :carry :invert? true))
 
 (defopcode clv
   0xB8 address-mode/implied :cycles 2
@@ -611,16 +558,7 @@
 (defopcode bne
   0xD0 address-mode/relative :cycles 2
   [nes relative-address]
-  (if-not (cpu/get-flag nes :zero)
-    (let [program-counter (get-in nes [:cpu :program-counter])
-          address (+ program-counter relative-address)
-          new-page? (!= (b/and address 0xFF00)
-                        (b/and program-counter 0xFF00))]
-      (-> nes
-          (update :cycles inc)
-          (assoc :program-counter address)
-          (cond-> new-page? (update :cycles inc))))
-    nes))
+  (utils/branch nes relative-address :zero :invert? true))
 
 (defopcode cld
   0xD8 address-mode/implied :cycles 2
@@ -695,16 +633,7 @@
 (defopcode beq
   0xF0 address-mode/relative :cycles 2
   [nes relative-address]
-  (if (cpu/get-flag nes :zero)
-    (let [program-counter (get-in nes [:cpu :program-counter])
-          address (+ program-counter relative-address)
-          new-page? (!= (b/and address 0xFF00)
-                        (b/and program-counter 0xFF00))]
-      (-> nes
-          (update :cycles inc)
-          (assoc :program-counter address)
-          (cond-> new-page? (update :cycles inc))))
-    nes))
+  (utils/branch nes relative-address :zero))
 
 (defopcode sed
   0xF8 address-mode/implied :cycles 2

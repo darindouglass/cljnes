@@ -418,12 +418,7 @@
   0xB4 address-mode/zero-page-x :cycles 4
   0xBC address-mode/absolute-x  :cycles 4
   [nes address]
-  (let [data (cpu/read nes address)]
-    (-> nes
-        (cpu/set-register :y data)
-        (cpu/set-flag :zero (zero? data))
-        (cpu/set-flag :negative (b/truthy? (b/and 0x80 data)))
-        (cpu/mark-extra-cycle))))
+  (utils/load-register nes address :y))
 
 (defopcode lda
   0xA1 address-mode/indirect-x  :cycles 6
@@ -435,12 +430,7 @@
   0xB9 address-mode/absolute-y  :cycles 4
   0xBD address-mode/absolute-x  :cycles 4
   [nes address]
-  (let [data (cpu/read nes address)]
-    (-> nes
-        (cpu/set-register :x data)
-        (cpu/set-flag :zero (zero? data))
-        (cpu/set-flag :negative (b/truthy? (b/and 0x80 data)))
-        (cpu/mark-extra-cycle))))
+  (utils/load-register nes address :accumulator))
 
 (defopcode ldx
   0xA2 address-mode/immediate   :cycles 2
@@ -449,12 +439,7 @@
   0xB6 address-mode/zero-page-y :cycles 4
   0xBE address-mode/absolute-y  :cycles 4
   [nes address]
-  (let [data (cpu/read nes address)]
-    (-> nes
-        (cpu/set-register :x data)
-        (cpu/set-flag :zero (zero? data))
-        (cpu/set-flag :negative (b/truthy? (b/and 0x80 data)))
-        (cpu/mark-extra-cycle))))
+  (utils/load-register nes address :x))
 
 (defopcode tay
   0xA8 address-mode/implied :cycles 2

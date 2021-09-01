@@ -2,7 +2,7 @@
   (:require [snes.binary :as b]
             [snes.cpu.address-mode :as address-mode]
             [snes.cpu.impl :as cpu]
-            [snes.opcode.utils :as utils])
+            [snes.cpu.opcode.utils :as utils])
   #?(:cljs (:require-macros [snes.cpu.opcode :refer [defopcode]])))
 
 ;; For debugging, going from an opcode to a name is super handy.
@@ -17,8 +17,8 @@
 #?(:clj
    (defmacro defopcode
      [symbol & rest]
-     (let [[opcode-data [[nes-symbol address-symbol] & body]] (split-with vector? rest)
-           opcode-data (partition 4 opcode-data)]
+     (let [[opcode-data [[nes-symbol address-symbol] & body]] (into [] (split-with (complement vector?) rest))
+           opcode-data (into [] (map vec) (partition 4 opcode-data))]
        `(doseq [[opcode# address-mode# _# cycle-count#] ~opcode-data]
           (swap! opcodes assoc opcode#
                  {:name ~(name symbol)
@@ -37,12 +37,12 @@
         hi (b/and (b/>> pointer 8) 0x00FF)
         lo (b/and pointer 0x00FF)]
     (-> nes
-        (cpu/set-flag :interrupt true)
+        (cpu/set-flag! :interrupt true)
         (cpu/write (+ 0x0100 stack) hi)
         (cpu/write (+ 0x0100 (- stack 1)) lo)
-        (cpu/set-flag :block true)
+        (cpu/set-flag! :block true)
         (as-> $ (cpu/write $ (+ 0x0100 (- stack 2)) (cpu/read-register $ :status)))
-        (cpu/set-flag :block false)
+        (cpu/set-flag! :block false)
         (assoc-in [:cpu :stack-pointer] (- stack 3))
         (as-> $ (assoc-in $ [:cpu :program-counter]
                           (b/or (cpu/read $ 0xFFFE)
@@ -61,9 +61,7 @@
   (let [data (cpu/read nes address)
         a (b/or (cpu/read-register nes :accumulator) data)]
     (-> nes
-        (cpu/set-register :accumulator a)
-        (cpu/set-flag :zero (zero? a))
-        (cpu/set-flag :negative (b/truthy? (b/and 0x80 a)))
+        (utils/load-register :accumulator a)
         (cpu/mark-extra-cycle))))
 
 (defopcode asl {}
@@ -80,9 +78,9 @@
                  (b/<< 1))
         lo (b/and data 0x00FF)
         nes (-> nes
-                (cpu/set-flag :carry (b/truthy? (b/and data 0xFF00)))
-                (cpu/set-flag :zero (zero? lo))
-                (cpu/set-flag :negative (b/truthy? (b/and 0x80 data))))]
+                (cpu/set-flag! :carry (b/truthy? (b/and data 0xFF00)))
+                (cpu/set-flag! :zero (zero? lo))
+                (cpu/set-flag! :negative (b/truthy? (b/and 0x80 data))))]
     (if implied?
       (cpu/set-register nes :accumulator lo)
       (cpu/write nes address lo))))
@@ -96,8 +94,8 @@
                    (cpu/get-flag nes :_))]
     (-> nes
         (cpu/write address data)
-        (cpu/set-flag :break false)
-        (cpu/set-flag :_ false)
+        (cpu/set-flag! :break false)
+        (cpu/set-flag! :_ false)
         (update :stack-pointer dec))))
 
 (defopcode bpl
@@ -108,7 +106,7 @@
 (defopcode clc
   0x18 address-mode/implied :cycles 2
   [nes _]
-  (cpu/set-flag nes :carry false))
+  (cpu/set-flag! nes :carry false))
 
 (defopcode jsr
   0x20 address-mode/absolute :cycles 6
@@ -137,8 +135,6 @@
         a (b/and (cpu/read-register nes :accumulator) data)]
     (-> nes
         (cpu/set-register :accumulator a)
-        (cpu/set-flag :zero (zero? a))
-        (cpu/set-flag :negative (b/truthy? (b/and 0x80 a)))
         (cpu/mark-extra-cycle))))
 
 (defopcode bit
@@ -148,9 +144,9 @@
   (let [data (cpu/read nes address)
         anded (b/and (cpu/read-register nes :accumulator) data)]
     (-> nes
-        (cpu/set-flag :zero (zero? (b/and anded 0x00FF)))
-        (cpu/set-flag :negative (b/truthy? (b/and data (b/<< 1 7))))
-        (cpu/set-flag :overflow (b/truthy? (b/and data (b/<< 1 6)))))))
+        (cpu/set-flag! :zero (zero? (b/and anded 0x00FF)))
+        (cpu/set-flag! :negative (b/truthy? (b/and data (b/<< 1 7))))
+        (cpu/set-flag! :overflow (b/truthy? (b/and data (b/<< 1 6)))))))
 
 (defopcode rol
   0x26 address-mode/zero-page   :cycles 5
@@ -163,9 +159,9 @@
                    (cpu/get-flag nes :carray))
         accumulator-mode? (= address (cpu/read-register nes :accumulator))
         nes (-> nes
-                (cpu/set-flag :carry (b/truthy? (b/and data 0xFF00)))
-                (cpu/set-flag :zero (zero? (b/and data 0x00FF)))
-                (cpu/set-flag :negative (b/truthy? (b/and data 0x80))))]
+                (cpu/set-flag! :carry (b/truthy? (b/and data 0xFF00)))
+                (cpu/set-flag! :zero (zero? (b/and data 0x00FF)))
+                (cpu/set-flag! :negative (b/truthy? (b/and data 0x80))))]
     (if accumulator-mode?
       (cpu/set-register nes :accumulator (b/and data 0x00FF))
       (cpu/write nes address (b/and data 0x00FF)))))
@@ -176,7 +172,7 @@
   (as-> nes $
     (update $ :stack-pointer inc)
     (cpu/set-register $ :status (cpu/read $ (+ 0x0100 (:stack-pointer $))))
-    (cpu/set-flag $ :_ true)))
+    (cpu/set-flag! $ :_ true)))
 
 (defopcode bmi
   0x30 address-mode/relative :cycles 2
@@ -186,7 +182,7 @@
 (defopcode sec
   0x38 address-mode/implied :cycles 2
   [nes _]
-  (cpu/set-flag nes :carry true))
+  (cpu/set-flag! nes :carry true))
 
 (defopcode rti
   0x40 address-mode/implied :cycles 6
@@ -202,7 +198,7 @@
         lo (cpu/read nes (+ 0x0100 (+ stack 2)))
         hi (cpu/read nes (+ 0x0100 (+ stack 3)))]
     (-> nes
-        (assoc-in [:cpu :program-counter (b/->16-bit hi lo)])
+        (assoc-in [:cpu :program-counter] (b/->16-bit hi lo))
         (cpu/set-register :status new-status))))
 
 (defopcode eor
@@ -218,9 +214,7 @@
   (let [data (cpu/read nes address)
         a (b/xor (cpu/read-register nes :accumulator) data)]
     (-> nes
-        (cpu/set-register :accumulator a)
-        (cpu/set-flag :zero (zero? a))
-        (cpu/set-flag :negative (b/truthy? (b/and 0x80 a)))
+        (utils/load-register :accumulator a)
         (cpu/mark-extra-cycle))))
 
 (defopcode lsr
@@ -236,9 +230,9 @@
         shifted (b/>> data 1)
         lo (b/and shifted 0x00FF)
         nes (-> nes
-                (cpu/set-flag :carry (b/truthy? (b/and data 0x0001)))
-                (cpu/set-flag :zero (zero? lo))
-                (cpu/set-flag :negative (b/truthy? (b/and shifted 0x0080))))]
+                (cpu/set-flag! :carry (b/truthy? (b/and data 0x0001)))
+                (cpu/set-flag! :zero (zero? lo))
+                (cpu/set-flag! :negative (b/truthy? (b/and shifted 0x0080))))]
     (if implied?
       (cpu/set-register nes :accumulator lo)
       (cpu/write nes address lo))))
@@ -291,18 +285,18 @@
   [nes address]
   (let [data (cpu/read nes address)
         a (cpu/read-register nes :accumulator)
-        value (+ a data (cpu/get-flag nes :carry))
+        value (+ a data (if (cpu/get-flag nes :carry) 1 0))
         lo (b/and value 0x00FF)
         overflowed? (b/and 0x0080
                            (b/not (b/xor a data))
                            (b/xor a value))]
     (-> nes
-        (cpu/set-flag :carry (> value 255))
-        (cpu/set-flag :zero (zero? lo))
-        (cpu/set-flag :negative (b/truthy? (b/and value 0x80)))
-        (cpu/set-flag :overflow overflowed?)
+        (cpu/set-flag! :carry (> value 255))
+        (cpu/set-flag! :zero (zero? lo))
+        (cpu/set-flag! :negative (b/truthy? (b/and value 0x80)))
+        (cpu/set-flag! :overflow overflowed?)
         (cpu/set-register :accumulator lo)
-        (cpu/mark-extra-cycles))))
+        (cpu/mark-extra-cycle))))
 
 (defopcode ror
   0x66 address-mode/zero-page   :cycles 5
@@ -320,9 +314,9 @@
                     (b/or (b/>> data 1)))
         lo (b/and shifted 0x00FF)
         nes (-> nes
-                (cpu/set-flag :carry (b/truthy? (b/and data 0x01)))
-                (cpu/set-flag :zero (zero? lo))
-                (cpu/set-flag :negative (b/truthy? (b/and shifted 0x0080))))]
+                (cpu/set-flag! :carry (b/truthy? (b/and data 0x01)))
+                (cpu/set-flag! :zero (zero? lo))
+                (cpu/set-flag! :negative (b/truthy? (b/and shifted 0x0080))))]
     (if implied?
       (cpu/set-register nes :accumulator lo)
       (cpu/write nes address lo))))
@@ -333,9 +327,7 @@
   (let [stack (inc (get-in nes [:cpu :stack-pointer]))
         a (cpu/read nes stack)]
     (-> nes
-        (cpu/set-register :accumulator a)
-        (cpu/set-flag :zero (zero? a))
-        (cpu/set-flag :negative (b/truthy? (b/and a 0x80)))
+        (utils/load-register :accumulator a)
         (update-in [:cpu :stack-pointer] inc))))
 
 (defopcode bvs
@@ -346,7 +338,7 @@
 (defopcode sei
   0x78 address-mode/implied :cycles 2
   [nes _]
-  (cpu/set-flag nes :disable-interrupt true))
+  (cpu/set-flag! nes :disable-interrupt true))
 
 (defopcode sta
   0x81 address-mode/indirect-x  :cycles 6
@@ -377,19 +369,13 @@
   0x86 address-mode/implied :cycles 2
   [nes _]
   (let [value (dec (cpu/read-register nes :y))]
-    (-> nes
-        (cpu/set-register :y value)
-        (cpu/set-flag :zero (zero? value))
-        (cpu/set-flag :negative (b/truthy? (b/and 0x80 value))))))
+    (utils/load-register nes :y value)))
 
 (defopcode txa
   0x8A address-mode/implied :cycles 2
   [nes _]
   (let [value (cpu/read-register nes :x)]
-    (-> nes
-        (cpu/set-register :accumulator value)
-        (cpu/set-flag :zero (zero? value))
-        (cpu/set-flag :negative (b/truthy? (b/and 0x80 value))))))
+    (utils/load-register nes :accumulator value)))
 
 (defopcode bcc
   0x90 address-mode/relative :cycles 2
@@ -400,10 +386,7 @@
   0x98 address-mode/implied :cycles 2
   [nes _]
   (let [value (cpu/read-register nes :y)]
-    (-> nes
-        (cpu/set-register :accumulator value)
-        (cpu/set-flag :zero (zero? value))
-        (cpu/set-flag :negative (b/truthy? (b/and 0x80 value))))))
+    (utils/load-register nes :accumulator value)))
 
 (defopcode txs
   0x9A address-mode/implied :cycles 2
@@ -418,7 +401,7 @@
   0xB4 address-mode/zero-page-x :cycles 4
   0xBC address-mode/absolute-x  :cycles 4
   [nes address]
-  (utils/load-register nes address :y))
+  (utils/load-register-address nes :y address))
 
 (defopcode lda
   0xA1 address-mode/indirect-x  :cycles 6
@@ -430,7 +413,7 @@
   0xB9 address-mode/absolute-y  :cycles 4
   0xBD address-mode/absolute-x  :cycles 4
   [nes address]
-  (utils/load-register nes address :accumulator))
+  (utils/load-register-address nes :accumulator address))
 
 (defopcode ldx
   0xA2 address-mode/immediate   :cycles 2
@@ -439,44 +422,35 @@
   0xB6 address-mode/zero-page-y :cycles 4
   0xBE address-mode/absolute-y  :cycles 4
   [nes address]
-  (utils/load-register nes address :x))
+  (utils/load-register-address nes :x address))
 
 (defopcode tay
   0xA8 address-mode/implied :cycles 2
   [nes _]
   (let [value (cpu/read-register nes :accumulator)]
-    (-> nes
-        (cpu/set-register :y value)
-        (cpu/set-flag :zero (zero? value))
-        (cpu/set-flag :negative (b/truthy? (b/and 0x80 value))))))
+    (utils/load-register nes :y value)))
 
 (defopcode tax
   0xAA address-mode/implied :cycles 2
   [nes _]
   (let [value (cpu/read-register nes :accumulator)]
-    (-> nes
-        (cpu/set-register :x value)
-        (cpu/set-flag :zero (zero? value))
-        (cpu/set-flag :negative (b/truthy? (b/and 0x80 value))))))
+    (utils/load-register :nes :x value)))
 
 (defopcode bcs
   0xB0 address-mode/relative :cycles 2
   [nes relative-address]
-  (utils/opcode nes relative-address :carry :invert? true))
+  (utils/branch nes relative-address :carry :invert? true))
 
 (defopcode clv
   0xB8 address-mode/implied :cycles 2
   [nes _]
-  (cpu/set-flag nes :overflow false))
+  (cpu/set-flag! nes :overflow false))
 
 (defopcode tsx
   0xBA address-mode/implied :cycles 2
   [nes _]
   (let [value (get-in nes [:cpu :stack-pointer])]
-    (-> nes
-        (cpu/set-register :x value)
-        (cpu/set-flag :zero (zero? value))
-        (cpu/set-flag :negative (b/truthy? (b/and 0x80 value))))))
+    (utils/load-register nes :x value)))
 
 (defopcode cpy
   0xC0 address-mode/immediate :cycles 2
@@ -487,9 +461,9 @@
         y (cpu/read-register nes :y)
         comparison (- y data)]
     (-> nes
-        (cpu/set-flag :carry (>= y data))
-        (cpu/set-flag :zero (zero? (b/and comparison 0x00FF)))
-        (cpu/set-flag :negative (b/truthy? (b/and comparison 0x0080))))))
+        (cpu/set-flag! :carry (>= y data))
+        (cpu/set-flag! :zero (zero? (b/and comparison 0x00FF)))
+        (cpu/set-flag! :negative (b/truthy? (b/and comparison 0x0080))))))
 
 (defopcode cmp
   0xC1 address-mode/indirect-x  :cycles 6
@@ -505,9 +479,9 @@
         a (cpu/read-register nes :accumulator)
         comparison (- a data)]
     (-> nes
-        (cpu/set-flag :carry (>= a data))
-        (cpu/set-flag :zero (zero? (b/and comparison 0x00FF)))
-        (cpu/set-flag :negative (b/truthy? (b/and comparison 0x0080)))
+        (cpu/set-flag! :carry (>= a data))
+        (cpu/set-flag! :zero (zero? (b/and comparison 0x00FF)))
+        (cpu/set-flag! :negative (b/truthy? (b/and comparison 0x0080)))
         (cpu/mark-extra-cycle))))
 
 (defopcode dec
@@ -526,19 +500,13 @@
   0xC8 address-mode/implied :cycles 2
   [nes _]
   (let [value (inc (cpu/read-register nes :y))]
-    (-> nes
-        (cpu/set-register :y value)
-        (cpu/set-flag :zero (zero? value))
-        (cpu/set-flag :negative (b/truthy? (b/and value 0x80))))))
+    (utils/load-register nes :y value)))
 
 (defopcode dex
   0xCA address-mode/implied :cycles 2
   [nes _]
   (let [value (dec (cpu/read-register nes :x))]
-    (-> nes
-        (cpu/set-register :y value)
-        (cpu/set-flag :zero (zero? value))
-        (cpu/set-flag :negative (b/truthy? (b/and 0x80 value))))))
+    (utils/load-register nes :y value)))
 
 (defopcode bne
   0xD0 address-mode/relative :cycles 2
@@ -548,7 +516,7 @@
 (defopcode cld
   0xD8 address-mode/implied :cycles 2
   [nes _]
-  (cpu/set-flag nes :decimal false))
+  (cpu/set-flag! nes :decimal false))
 
 (defopcode cpx
   0xE0 address-mode/immediate :cycles 2
@@ -559,9 +527,9 @@
         x (cpu/read-register nes :x)
         comparison (- x data)]
     (-> nes
-        (cpu/set-flag :carry (>= x data))
-        (cpu/set-flag :zero (zero? (b/and comparison 0x00FF)))
-        (cpu/set-flag :negative (b/truthy? (b/and comparison 0x0080))))))
+        (cpu/set-flag! :carry (>= x data))
+        (cpu/set-flag! :zero (zero? (b/and comparison 0x00FF)))
+        (cpu/set-flag! :negative (b/truthy? (b/and comparison 0x0080))))))
 
 ;; TODO: addition is just substraction with a slight inversion.
 (defopcode sbc
@@ -576,18 +544,18 @@
   [nes address]
   (let [data (b/xor (cpu/read nes address) 0x00FF)
         a (cpu/read-register nes :accumulator)
-        value (+ a data (cpu/get-flag nes :carry))
+        value (+ a data (if (cpu/get-flag nes :carry) 1 0))
         lo (b/and value 0x00FF)
         overflowed? (b/and 0x0080
                            (b/not (b/xor a data))
                            (b/xor a value))]
     (-> nes
-        (cpu/set-flag :carry (> value 255))
-        (cpu/set-flag :zero (zero? lo))
-        (cpu/set-flag :negative (b/truthy? (b/and value 0x80)))
-        (cpu/set-flag :overflow overflowed?)
+        (cpu/set-flag! :carry (> value 255))
+        (cpu/set-flag! :zero (zero? lo))
+        (cpu/set-flag! :negative (b/truthy? (b/and value 0x80)))
+        (cpu/set-flag! :overflow overflowed?)
         (cpu/set-register :accumulator lo)
-        (cpu/mark-extra-cycles))))
+        (cpu/mark-extra-cycle))))
 
 (defopcode inc
   0xE6 address-mode/zero-page   :cycles 5
@@ -605,10 +573,7 @@
   0xE8 address-mode/implied :cycles 2
   [nes _]
   (let [value (inc (cpu/read-register nes :x))]
-    (-> nes
-        (cpu/set-register :y value)
-        (cpu/set-flag :zero (zero? value))
-        (cpu/set-flag :negative (b/truthy? (b/and 0x80 value))))))
+    (utils/load-register nes :y value)))
 
 (defopcode nop
   0xEA address-mode/implied :cycles 2
@@ -623,7 +588,7 @@
 (defopcode sed
   0xF8 address-mode/implied :cycles 2
   [nes _]
-  (cpu/set-flag nes :decimal true))
+  (cpu/set-flag! nes :decimal true))
 
 (defn run [nes program-counter]
   (let [{:keys [op-fn]} (get @opcodes program-counter)]

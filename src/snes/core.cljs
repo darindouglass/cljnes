@@ -4,7 +4,9 @@
             [snes.cpu :as cpu]))
 
 (defn tick [state elapsed-ms]
-  (prn state))
+  (-> state
+      #_(pge/clear)
+      (pge/draw-string 0 0 (str "darin douglass - " (rand-int 10) " - " elapsed-ms) "0xFFF")))
 
 (defn start! []
   (-> {}

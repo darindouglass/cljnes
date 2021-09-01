@@ -25,7 +25,7 @@
   "Addresses an offset in the zeroth page."
   [nes program-counter]
   (let [address (b/and (cpu/read nes program-counter) 0x00FF)]
-    [(cpu/inc-program-counter new) address]))
+    [(cpu/inc-program-counter nes) address]))
 
 (defn zero-page-x
   "Addresses an offset in the zeroth page after adding the value in the `x` as an offset."
@@ -59,7 +59,7 @@
   [nes program-counter]
   (let [lo (cpu/read nes program-counter)
         hi (cpu/read nes (inc program-counter))]
-    [nes (b/->16bit hi lo)]))
+    [nes (b/->16-bit hi lo)]))
 
 (defn absolute-x
   "Reads a full 16-byte address adding the value in the `x` register."
